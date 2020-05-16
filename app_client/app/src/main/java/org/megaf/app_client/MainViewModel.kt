@@ -1,20 +1,34 @@
 package org.megaf.app_client
 
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothSocket
 import android.util.Log
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.UnstableDefault
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonDecodingException
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.ticker
 import java.io.IOException
 import java.lang.StringBuilder
+import java.nio.CharBuffer
 import java.util.*
+
+internal enum class BTCommands {
+    GET_TEMP,  //0
+    GET_HUMIDITY,  //1
+    GET_WATER_LEVEL,  // 2
+    GET_MOISTURE_LEVEL,  // 3
+    GET_TEMP_THRESHOLD,  // 4
+    GET_TARGET_TEMP,  //5
+    GET_TARGET_HUMIDITY,  //6
+    GET_TARGET_WATER_LVL,  //7
+    GET_TARGET_MOISTURE_LEVEL,  //8
+    SET_TEMP,  //9
+    SET_HUMIDITY,  //10
+    SET_WATER_LEVEL,  //11
+    SET_MOISTURE_LEVEL,  //12
+    SET_TEMP_THRESHOLD //13
+}
 
 class MainViewModel : ViewModel() {
     // serial uuid ???
@@ -32,50 +46,94 @@ class MainViewModel : ViewModel() {
 
     val device: MutableLiveData<BluetoothDevice> = MutableLiveData()
 
-    private val _bt_device: BluetoothDevice?
-        get() = device.value
+    var periodicTask: Job? = null
 
+    private var _bt_device: BluetoothDevice? = null
 
-    enum class _actions {
-        JSON,
-        STATS,
-    }
+    private var _socket: BluetoothSocket? = null
 
-    @OptIn(UnstableDefault::class)
-    fun getStats() {
-        var response = StringBuilder()
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                contentLoading.postValue(true)
-                val socket = _bt_device!!.createRfcommSocketToServiceRecord(uuid)
-                try {
-                    socket.use {
-                        it.connect()
-                        val bufWriter = socket.outputStream.bufferedWriter(Charsets.US_ASCII)
-                        bufWriter.write("${_actions.STATS.ordinal}\n\r")
-                        bufWriter.flush()
-                        //
-                        val bufReader = socket.inputStream.bufferedReader(Charsets.US_ASCII)
-                        for (attempt in 1..3)  {
-                            while (socket.inputStream.available() > 0) {
-                                response.append(socket.inputStream.read().toChar())
-                                delay(50)
-                            }
-                            delay(300)
-                        }
-                        val arr = CharArray(socket.inputStream.available())
-                        bufReader.read(arr)
-                        currentState.postValue(Json.parse(StatePoko.serializer(), response.toString()))
-                        Log.i("vm", "dude this shit returned $response")
-                    }
-                } catch (e: IOException) {
-                    notice.postValue("Failed to connect to farm")
-                } catch (e: JsonDecodingException) {
-                    notice.postValue("Failed to parse response from farm:\n $response")
-                } finally {
-                    contentLoading.postValue(false)
+    var bt_device: BluetoothDevice?
+        get() = _bt_device
+        set(value) {
+            if (value == null) {
+                return
+            }
+            device.postValue(value)
+            _bt_device = value
+            _open_socket(reopen = true)
+            periodicTask?.cancel()
+            periodicTask = viewModelScope.launch(Dispatchers.IO) {
+                for (unit in ticker(3000, 100)) {
+                    Log.d("vm", "tick")
+                    runBlocking { getStats() }
                 }
             }
+            periodicTask!!.start()
         }
+
+    private fun _open_socket(reopen: Boolean = false) {
+        if (device == null || _socket != null && !reopen) {
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            _socket = _bt_device!!.createRfcommSocketToServiceRecord(uuid)
+            try {
+                _socket?.connect()
+            } catch (e: IOException) {
+                notice.postValue("failed to open socket")
+            }
+        }
+    }
+
+    private fun getStats() {
+        contentLoading.postValue(true)
+        try {
+            runBlocking {
+                _open_socket()
+                val state = getCurrentState()
+                currentState.postValue(state)
+            }
+        } catch (e: IOException) {
+            notice.postValue("Failed to connect to farm")
+            _open_socket(true)
+        }
+        contentLoading.postValue(false)
+    }
+
+    private fun getCurrentState(): StatePoko {
+        val state = StatePoko(
+            runCmd(BTCommands.GET_TEMP).toDouble(),
+            runCmd(BTCommands.GET_HUMIDITY).toInt(),
+            runCmd(BTCommands.GET_WATER_LEVEL).toInt(),
+            runCmd(BTCommands.GET_MOISTURE_LEVEL).toInt()
+        )
+        return state
+    }
+
+    private fun runCmd(btCommand: BTCommands): String {
+        Log.i("vm", "sending command $btCommand")
+        _socket!!.outputStream.write("C+${btCommand.ordinal}".toByteArray(Charsets.US_ASCII))
+        _socket!!.outputStream.flush()
+        var response: String = "0"
+        val buf = StringBuilder()
+        var attempt = 3
+        while (_socket!!.inputStream.available() > 0 || attempt-- > 0) {
+            Log.d("vm", "trying to read from socket")
+            Thread.sleep(500)
+            while (_socket!!.inputStream.available() > 0) {
+                buf.append(_socket!!.inputStream.read().toChar())
+            }
+            if (buf.isNotEmpty()) {
+                Log.i("vm", "msg from socket: ${buf.toString()}")
+                response = buf.toString()
+                break
+            }
+        }
+        return response
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        this._socket?.close()
     }
 }

@@ -4,6 +4,7 @@ import android.app.AlertDialog
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.content.*
+import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.view.View.INVISIBLE
@@ -14,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
 import kotlinx.android.synthetic.main.activity_main.*
 import java.util.*
+import kotlin.math.min
 
 class MainActivity : AppCompatActivity() {
     val validNames = setOf("farm", "hc-06")
@@ -50,15 +52,11 @@ class MainActivity : AppCompatActivity() {
         registerReceiver(receiver, filter)
         for (device in bluetoothAdapter.bondedDevices) {
             if (device.name.toLowerCase(Locale.getDefault()) in validNames) {
-                mainModel.device.value = device
+                mainModel.bt_device = device
                 break
             }
         }
         this.bluetoothAdapter.startDiscovery()
-
-        findViewById<Button>(R.id.sync).setOnClickListener(View.OnClickListener {
-            mainModel.getStats()
-        })
         setupBindings()
     }
 
@@ -75,12 +73,20 @@ class MainActivity : AppCompatActivity() {
         mainModel.currentState.observe(this, androidx.lifecycle.Observer {
             this.temp.text = "${it.temp} C"
             this.humid.text = "${it.humidity} %"
-            this.moisture.text = "${MoistureLevel.values()[it.moistureLevel]}"
+            this.moisture.text = "${MoistureLevel.values()[min(it.moistureLevel, MoistureLevel.values().size - 1)]}"
             this.tankLevel.progress = it.waterLevel
         })
         mainModel.device.observe(this, androidx.lifecycle.Observer {
-            Toast.makeText(this@MainActivity, "found farm (${it.name})", Toast.LENGTH_LONG).show()
-            it.setPin(byteArrayOf(1, 2, 3, 4))
+            if (it != null) {
+                Toast.makeText(this@MainActivity, "connected to farm (${it.name})", Toast.LENGTH_SHORT).show()
+                it.setPin(byteArrayOf(1, 2, 3, 4))
+                this.isConnected.text = "connected to ${it.name}"
+                this.isConnected.setTextColor(Color.GREEN)
+            } else {
+                Toast.makeText(this@MainActivity, "disconnected from farm", Toast.LENGTH_SHORT).show()
+                this.isConnected.text = "disconnected"
+                this.isConnected.setTextColor(Color.RED)
+            }
         })
     }
 
@@ -97,7 +103,7 @@ class MainActivity : AppCompatActivity() {
                     val device: BluetoothDevice =
                         intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)!!
                     if (device.name in validNames) {
-                        mainModel.device.value = device
+                        mainModel.bt_device = device
                     }
                 }
             }

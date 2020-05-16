@@ -1,27 +1,24 @@
-//#include "Stream.h"
-#include <SoftwareSerial.h>
-#include <Time.h>
-#include <SimpleDHT.h>
-#include <ArduinoJson.h>
-
-#define BAUDR 250000
-
 #define DEBUG
 
-#define DEBUG_S
-// comment line to enable sensors log
-#undef DEBUG_S
+// uncomment line to enable sensors log
+//#define DEBUG_S
 
-#define DEBUG_O
-// comment line to enable op-functions log
-#undef DEBUG_O
+// uncomment line to enable op-functions log
+//#define DEBUG_O
 
 #ifndef DEBUG
 #define DISABLE_LOGGING
 #endif
+
+#include <SoftwareSerial.h>
+#include <Time.h>
+#include <SimpleDHT.h>
 #include <ArduinoLog.h>
 
 #define JSON_CAPACITY 512
+#define BAUDR 250000
+#define BT_BAUDR 57600
+#define BT_TIMEOUT 1000
 
 enum MoistureLevel {
   L_LOW,
@@ -48,62 +45,23 @@ struct State {
   byte humidity {};
   byte waterLevel {};
   MoistureLevel moistureLevel {};
+  byte tempTreshold {};
 };
-//
-//enum BTCommands {
-//  GET_TEMP,
-//  GET_HUMIDITY,
-//  GET_WATER_LEVEL,
-//  GET_MOISTURE_LEVEL,
-//  GET_TEMP_THRESHOLD,
-//  SET_TEMP,
-//  SET_HUMIDITY,
-//  SET_WATER_LEVEL,
-//  SET_MOISTURE_LEVEL,
-//  SET_TEMP_THRESHOLD,
-//}
 
-void serialEvent_(Stream &stream);
+void serialEvent_(String &cmd, SoftwareSerial &serial);
 void handleJson(const String& cmd);
 
-class BT {
-  public:
-    const static byte rx {
-      5
-    };
-    const static byte tx {6};
-    const long m_rate;
-    SoftwareSerial m_serial{rx, tx};
-    SoftwareSerial m_hardware_serial { 1, 0 };
-    bool m_echo = false;
-    String m_term {"\n\r"};
-    BT(): BT(57600) {}
-    BT(long rate): m_rate {rate} {
-      m_serial.begin(57600);
-      m_serial.setTimeout(1000);
-      m_hardware_serial.begin(BAUDR);
-      m_serial.listen();
-    }
-    void runAtCmd(const String &cmd, bool expectOk = true) {
-      m_serial.print(cmd.c_str());
-      m_serial.print(m_term);
-      delay(1000);
-      String response = m_serial.readString();
-      Serial.print("hc 06 responds: ");
-      Serial.print(response);
-    }
-    void doRoutine() {
-      if (!m_serial.available()) {
-        return;
-      }
-      Log.notice("handilng bt evt");
-      serialEvent_(m_serial);
-    }
+const static byte BT_RX = 5;
+const static byte BT_TX = 6;
 
-    const char &termChar() {
-      return m_term[m_term.length() - 1];
-    }
-};
+
+ void runAtCmd(SoftwareSerial &serial, const String &cmd, bool expectOk = true, const char *term = "\n\r") {
+      serial.print(cmd.c_str());
+      serial.print(term);
+      delay(1000);
+      String response = serial.readString();
+      Log.notice("hc 06 responds: %s", response.c_str());
+}
 
 static const int DHT_PIN { 8 };
 static const byte COOLER { 10};
@@ -113,7 +71,7 @@ static const byte PUMP { 12 };
 
 static const int WATER_SENSOR {A0};
 static const int MOISTURE_SENSOR {A1};
-;
+
 
 //static int TANK_CAPACITY = 400; // ml
 static int WATER_LVL_SENSOR_H = 480; // mm;
@@ -121,13 +79,16 @@ static int WATER_LVL_SENSOR_H = 480; // mm;
 static State current_state {};// (26, 80, 0, 0);
 static State target_state {};//(28, 0, 0, 1);
 
-static BT bt_;
-static SimpleDHT11 *dht_ {nullptr};
+
+using BT = SoftwareSerial;
+
+static BT bt_(BT_RX, BT_TX);
+static SimpleDHT11 dht_{ DHT_PIN };
 static bool IS_MANUAL {false};
 
 
 void writeStat(State &state);
-DynamicJsonDocument getStats(const State &state);
+
 void loadState(const String &json, State &state);
 
 float convertToVoltage(int pinVal, int resolution = 10, int operatingVoltage = 5);
@@ -141,9 +102,9 @@ void operateWaterPump(const MoistureLevel &cur_lvl, const MoistureLevel &target_
 
 void setup()
 {
-  
   Serial.begin(BAUDR);
-  dht_ = new SimpleDHT11(DHT_PIN);
+  bt_.begin(BT_BAUDR);
+  bt_.setTimeout(BT_TIMEOUT);
   pinMode(WATER_SENSOR, INPUT);
 #ifndef DISABLE_LOGGING
   Log.begin(LOG_LEVEL_VERBOSE, &Serial, true);
@@ -151,6 +112,7 @@ void setup()
     Serial.println();
   });
 #endif
+
   pinMode(COOLER, OUTPUT);
   pinMode(HEATER, OUTPUT);
   target_state.moistureLevel = L_HIGH;
@@ -162,61 +124,119 @@ void loop()
   updateTemp(current_state.temp, current_state.humidity);
   updateWaterLvl(current_state.waterLevel);
   updateMoistureLvl(current_state.moistureLevel);
-  bt_.doRoutine();
   operateTemp(current_state.temp, target_state.temp);
   operateWaterPump(current_state.moistureLevel, target_state.moistureLevel);
-#ifdef DEBUG
-  delay(1000); // so we can actually read some values
-#endif
-}
-enum NextEvt {
-  UNSET,
-  SET_TARGET_STATE,
-  SET_TARGET_SHEET
-};
-
-enum Command {
-  JSON_REQUEST,
-  STATS,
-};
-void serialEvent() {
-  serialEvent_(Serial);
-}
-
-void serialEvent_(Stream &stream) {
-  static NextEvt next_evt {UNSET};
-  Log.notice("processing evt");
-  //emulate bt cmnds
-  if (!stream.available()) {
-    Log.notice("no data available");
+  
+  if (!bt_.available()) {
+    #ifdef DEBUG
+    if (!Serial.available())
+    #endif
     return;
+    
   }
-  String cmd {stream.readString()};
+  String cmd {
+  #ifdef DEBUG
+  !bt_.available() ? Serial.readString():
+  #endif
+    bt_.readString()
+  };
+
+
+  serialEvent_(cmd, bt_);
+}
+
+const char *CMD_PREFIX = "C+";
+// should start with CMD prefix
+enum BTCommands {
+  GET_TEMP, //0
+  GET_HUMIDITY, //1
+  GET_WATER_LEVEL, // 2
+  GET_MOISTURE_LEVEL, // 3
+  GET_TEMP_THRESHOLD, // 4
+
+  GET_TARGET_TEMP, //5 
+  GET_TARGET_HUMIDITY, //6
+  GET_TARGET_WATER_LVL, //7
+  GET_TARGET_MOISTURE_LEVEL, //8
+  
+  SET_TEMP, //9
+  SET_HUMIDITY, //10
+  SET_WATER_LEVEL, //11
+  SET_MOISTURE_LEVEL, //12
+  SET_TEMP_THRESHOLD, //13
+};
+
+void serialEvent_(String &cmd, SoftwareSerial &serial) {
+  //emulate bt cmnds
+  Log.notice("got cmd: %s", cmd.c_str());
   cmd.replace("\n", "");
   cmd.replace("\r", "");
 
-  Log.notice("got cmd: %s", cmd.c_str());
-
   if (cmd.startsWith("AT")) {
-    Serial.println("got at cmd, redirecting to bt module");
-    bt_.runAtCmd(cmd);
+    Log.notice("got at cmd, redirecting to bt module");
+    runAtCmd(bt_, cmd);
   } else if (cmd.startsWith("+DISK")) {
     Log.notice("got some mgmt cmnd");
+  } else if (cmd.startsWith(CMD_PREFIX)) {
+    cmd.replace(CMD_PREFIX, "");
+    int idx_of_val_splitter = cmd.indexOf("=");
+    int int_cmd {};
+    String cmd_val {};
+    if (idx_of_val_splitter >= 0) {
+      int_cmd = cmd.substring(0, idx_of_val_splitter).toInt();
+      cmd_val = cmd.substring(idx_of_val_splitter + 1);
+    } else {
+      int_cmd = cmd.toInt();
+    }
+    #ifdef DEBUG
+//    #define serial Serial
+    #endif
+    switch (int_cmd) {
+      case GET_TEMP:
+        serial.print(current_state.temp);
+        break;
+      case GET_HUMIDITY:
+        serial.print(current_state.humidity);
+        break;
+      case GET_WATER_LEVEL:
+        serial.print(current_state.waterLevel);
+        break;
+      case GET_MOISTURE_LEVEL:
+        serial.print(current_state.moistureLevel);
+        break;
+      case GET_TEMP_THRESHOLD:
+        serial.print(current_state.tempTreshold);
+        break;
+      case GET_TARGET_TEMP:
+        serial.print(target_state.temp);
+        break;
+      case GET_TARGET_HUMIDITY:
+        serial.print(target_state.humidity);
+        break;
+      case GET_TARGET_MOISTURE_LEVEL:
+        serial.print(target_state.moistureLevel);
+        break;
+      case SET_TEMP:
+        target_state.temp = min(cmd_val.toInt(), 255);
+        break;
+      case SET_HUMIDITY:
+        target_state.humidity = min(cmd_val.toInt(), 255);
+        break;
+      case SET_MOISTURE_LEVEL:
+        target_state.moistureLevel = cmd_val.toInt();
+        break;
+      case SET_TEMP_THRESHOLD:
+        current_state.tempTreshold = cmd_val.toInt();
+        break;
+      default:
+        Log.error("bad command %d", int_cmd);
+      #ifdef DEBUG
+      #undef serial
+      #endif
+    }
+  } else {
+    Log.error("unknown command");
   }
-  else {
-  Log.notice("waiting evt: %d", next_evt);
-  switch (cmd.toInt()) {
-    //todo: dat is stupid actually, do it like F+{SMSHIT}, this should be faster than serialization/deserialization
-    case JSON_REQUEST:
-      handleJson(cmd);
-      break;
-    case STATS:
-      writeStat(current_state);
-      break;
-    default:
-      Log.error("unknown command");
-  }
-}
 }
 
 void handleJson(const String& cmd) {
@@ -225,7 +245,7 @@ void handleJson(const String& cmd) {
 }
 
 void updateTemp(byte &temp, byte &humidity) {
-  dht_->read(&temp, &humidity, NULL);
+  dht_.read(&temp, &humidity, NULL);
 }
 
 
@@ -292,19 +312,23 @@ void operateTemp(byte current_temp, byte target_temp, byte cooler_pin, byte heat
   }
   byte diff { abs(current_temp - target_temp) };
   byte target_pin {};
+  byte disable_pin {};
   if (current_temp < target_temp) {
     target_pin = heater_pin;
+    disable_pin = cooler_pin;
 #ifdef DEBUG_O
     Log.notice("turning heater on");
 #endif
   } else {
     target_pin = cooler_pin;
+    disable_pin = heater_pin;
 #ifdef DEBUG_O
     Log.notice("turning cooler on");
 #endif
   }
   // max prevents overflow
-  analogWrite(target_pin, map(diff, 1, max(15, diff), 0, 255));
+  analogWrite(target_pin, map(diff, 1, max(10, diff), 0, 255));
+  analogWrite(disable_pin, LOW);
 }
 
 void operateWaterPump(const MoistureLevel &cur_lvl, const MoistureLevel &target_lvl, byte pump_pin) {
@@ -320,39 +344,3 @@ void operateWaterPump(const MoistureLevel &cur_lvl, const MoistureLevel &target_
     digitalWrite(pump_pin, LOW);
   }
 }
-
-void loadState(const String &json, State &state) {
-  Log.notice("loading json: %s", json.c_str());
-  DynamicJsonDocument doc(JSON_CAPACITY);
-  DeserializationError err { deserializeJson(doc, json.c_str()) };
-  if (err) {
-    Log.fatal("got error(code: %d), while parsing json", err);
-    return;
-  }
-  #ifdef DEBUG
-  serializeJsonPretty(doc, Serial);
-  Serial.println();
-  #endif
-  state.temp = doc["temp"].as<byte>();
-  state.moistureLevel = MoistureLevel(doc["moistureLevel"].as<int>());
-};
-
-
-DynamicJsonDocument getStats(const State &state) {
-  DynamicJsonDocument doc(JSON_CAPACITY);
-  doc["temp"] = state.temp;
-  doc["humidity"] = state.humidity;
-  doc["waterLevel"] = state.waterLevel;
-  doc["moistureLevel"] = state.moistureLevel;
-  doc.shrinkToFit();
-  return doc;
-}
-
-void writeStat(State &state) {
-  DynamicJsonDocument stat {getStats(state)};
-#ifdef DEBUG
-  serializeJsonPretty(stat, Serial);
-  Serial.println();
-#endif
-  serializeJson(stat, bt_.m_serial);
-};
