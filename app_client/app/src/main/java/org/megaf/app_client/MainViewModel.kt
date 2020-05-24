@@ -98,6 +98,9 @@ class MainViewModel : ViewModel() {
             }
         } catch (e: IOException) {
             notice.postValue("Failed to get current stats")
+        } catch (e: NullPointerException) {
+            notice.postValue("Socket unexpectedly closed")
+        } finally {
             _open_socket(true)
         }
         contentLoading.postValue(false)

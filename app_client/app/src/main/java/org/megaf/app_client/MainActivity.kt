@@ -6,15 +6,13 @@ import android.bluetooth.BluetoothDevice
 import android.content.*
 import android.graphics.Color
 import android.os.Bundle
-import android.view.View
 import android.view.View.INVISIBLE
 import android.view.View.VISIBLE
-import android.widget.Button
+import android.widget.SeekBar
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
 import kotlinx.android.synthetic.main.activity_main.*
-import kotlinx.android.synthetic.main.activity_main.view.*
 import java.util.*
 import kotlin.math.min
 
@@ -62,6 +60,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupBindings() {
+        targetTempSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                targetTemp.text = "$progress C"
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+
+            }
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+            }
+        })
+
         mainModel.notice.observe(this, androidx.lifecycle.Observer {
             Toast.makeText(this, it, Toast.LENGTH_LONG).show()
         })
@@ -73,17 +84,23 @@ class MainActivity : AppCompatActivity() {
         })
         mainModel.currentState.observe(this, androidx.lifecycle.Observer {
             this.temp.text = "${it.temp} C"
-            this.moisture.text = "${MoistureLevel.values()[min(it.moistureLevel, MoistureLevel.values().size - 1)]}"
+            this.moisture.text =
+                "${MoistureLevel.values()[min(it.moistureLevel, MoistureLevel.values().size - 1)]}"
             this.tankLevel.text = "${it.waterLevel}%"
         })
         mainModel.device.observe(this, androidx.lifecycle.Observer {
             if (it != null) {
-                Toast.makeText(this@MainActivity, "connected to farm (${it.name})", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this@MainActivity,
+                    "connected to farm (${it.name})",
+                    Toast.LENGTH_SHORT
+                ).show()
                 it.setPin(byteArrayOf(1, 2, 3, 4))
                 this.isConnected.text = "connected to ${it.name}"
                 this.isConnected.setTextColor(Color.GREEN)
             } else {
-                Toast.makeText(this@MainActivity, "disconnected from farm", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "disconnected from farm", Toast.LENGTH_SHORT)
+                    .show()
                 this.isConnected.text = "disconnected"
                 this.isConnected.setTextColor(Color.RED)
             }
