@@ -28,7 +28,6 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         mainModel = ViewModelProvider(this).get(MainViewModel::class.java)
-        spinner
         setupBindings()
         findDevices()
     }
@@ -74,9 +73,8 @@ class MainActivity : AppCompatActivity() {
         })
         mainModel.currentState.observe(this, androidx.lifecycle.Observer {
             this.temp.text = "${it.temp} C"
-            this.humid.text = "${it.humidity} %"
             this.moisture.text = "${MoistureLevel.values()[min(it.moistureLevel, MoistureLevel.values().size - 1)]}"
-            this.tankLevel.progress = it.waterLevel
+            this.tankLevel.text = "${it.waterLevel}%"
         })
         mainModel.device.observe(this, androidx.lifecycle.Observer {
             if (it != null) {

@@ -91,6 +91,8 @@ class MainViewModel : ViewModel() {
         try {
             runBlocking {
                 _open_socket()
+            }
+            if (_socket != null) {
                 val state = getCurrentState()
                 currentState.postValue(state)
             }
@@ -101,7 +103,7 @@ class MainViewModel : ViewModel() {
         contentLoading.postValue(false)
     }
 
-    public fun getTargetStats() {
+    fun getTargetStats() {
         contentLoading.postValue(true)
         viewModelScope.launch(Dispatchers.IO) {
             try {
