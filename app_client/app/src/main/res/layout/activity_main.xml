@@ -1,18 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
-        xmlns:app="http://schemas.android.com/apk/res-auto"
-        xmlns:tools="http://schemas.android.com/tools"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        tools:context=".MainActivity">
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:layout_marginLeft="11dp"
+    android:layout_marginRight="11dp"
+    tools:context=".MainActivity">
 
 
     <LinearLayout
         android:id="@+id/controls"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
         android:gravity="bottom"
+        android:orientation="vertical"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
@@ -20,7 +22,8 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="11dp">
+            android:layout_marginBottom="11dp"
+            android:orientation="horizontal">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -33,12 +36,42 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:visibility="invisible" />
+            </LinearLayout>
+
+
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:labelFor="@id/currentBlock"
+            android:text="@string/current_state" />
+
+        <LinearLayout
+            android:id="@+id/currentBlock"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:labelFor="@+id/isConnected"
+                    android:text="@string/status" />
 
                 <TextView
                     android:id="@+id/isConnected"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="TextView" />
+                    android:gravity="center"
+                    android:text="@string/connected" />
+
             </LinearLayout>
 
             <LinearLayout
@@ -47,120 +80,154 @@
                 android:layout_weight="1"
                 android:orientation="vertical">
 
-                <LinearLayout
+                <TextView
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content">
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:labelFor="@id/temp"
+                    android:text="@string/temperature" />
 
-                    <TextView
-                        android:id="@+id/textView"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:labelFor="@+id/targetTemp"
-                        android:text="Target Temp" />
+                <TextView
+                    android:id="@+id/temp"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:autofillHints=""
+                    android:gravity="center" />
+            </LinearLayout>
 
-                    <TextView
-                        android:id="@+id/targetTempLabel"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="50C" />
-                </LinearLayout>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:labelFor="@id/moisture"
+                    android:text="@string/moisture" />
+
+                <TextView
+                    android:id="@+id/moisture"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    tools:text="wet" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:labelFor="@+id/tankLevel"
+                    android:text="@string/water_amount" />
+
+                <TextView
+                    android:id="@+id/tankLevel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    tools:text="100%" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:labelFor="@id/targetBlock"
+            android:text="@string/target_state" />
+
+        <LinearLayout
+            android:id="@+id/targetBlock"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:baselineAligned="false"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/targetTempLabel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:labelFor="@+id/targetTemp"
+                    android:text="@string/target_temp" />
 
                 <SeekBar
+                    android:id="@+id/targetTempSeekBar"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:max="30"
+                    android:min="0" />
+
+                <TextView
                     android:id="@+id/targetTemp"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1" />
+                    android:gravity="center"
+                    tools:text="50C" />
             </LinearLayout>
 
-            <Spinner
-                android:id="@+id/targetMoistureLevel"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1" />
+                android:layout_weight="1"
+                android:gravity="top"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:labelFor="@id/targetMoistureLevel"
+                    android:gravity="center"
+                    android:text="@string/target_moisture"/>
 
+                <Spinner
+                    android:id="@+id/targetMoistureLevel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:entries="@array/moisture_levels" />
+            </LinearLayout>
         </LinearLayout>
 
-        <LinearLayout
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <Button
+            android:id="@+id/syncBtn"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:text="@string/sync" />
 
-            <TextView
-                android:id="@+id/temp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:ems="10"
-                android:autofillHints="" />
-
-            <TextView
-                android:id="@+id/humid"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:ems="10" />
-
-            <TextView
-                android:id="@+id/moisture"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="wet" />
-
-            <ProgressBar
-                android:id="@+id/tankLevel"
-                style="?android:attr/progressBarStyle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1" />
-
-        </LinearLayout>
-
-        <LinearLayout
+        <ProgressBar
+            android:id="@+id/progress"
+            style="@style/Widget.AppCompat.ProgressBar.Horizontal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="bottom"
-            android:gravity="center">
-
-            <Spinner
-                android:id="@+id/spinner"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1" />
-
-            <Button
-                android:id="@+id/start"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="start" />
-
-            <Button
-                android:id="@+id/stop"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="stop" />
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_gravity="bottom"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:orientation="vertical">
-
-            <ProgressBar
-                android:id="@+id/progress"
-                style="@style/Widget.AppCompat.ProgressBar.Horizontal"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center" />
-
-        </LinearLayout>
-
+            android:layout_gravity="center" />
 
     </LinearLayout>
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+
+</LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>

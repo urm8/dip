@@ -6,11 +6,12 @@ import android.util.Log
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.ticker
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.io.IOException
-import java.lang.StringBuilder
-import java.nio.CharBuffer
 import java.util.*
 
 internal enum class BTCommands {
@@ -72,7 +73,7 @@ class MainViewModel : ViewModel() {
         }
 
     private fun _open_socket(reopen: Boolean = false) {
-        if (device == null || _socket != null && !reopen) {
+        if (device.value == null || _socket != null && !reopen) {
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
@@ -94,25 +95,47 @@ class MainViewModel : ViewModel() {
                 currentState.postValue(state)
             }
         } catch (e: IOException) {
-            notice.postValue("Failed to connect to farm")
+            notice.postValue("Failed to get current stats")
             _open_socket(true)
         }
         contentLoading.postValue(false)
     }
 
-    private fun getCurrentState(): StatePoko {
-        val state = StatePoko(
-            runCmd(BTCommands.GET_TEMP).toDouble(),
-            runCmd(BTCommands.GET_HUMIDITY).toInt(),
-            runCmd(BTCommands.GET_WATER_LEVEL).toInt(),
-            runCmd(BTCommands.GET_MOISTURE_LEVEL).toInt()
-        )
-        return state
+    public fun getTargetStats() {
+        contentLoading.postValue(true)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                _open_socket()
+                targetState.postValue(getTargetState())
+            } catch (e: IOException) {
+                notice.postValue("Failed to get target stats")
+                _open_socket()
+            }
+        }
+        contentLoading.postValue(false)
     }
 
-    private fun runCmd(btCommand: BTCommands): String {
+    private fun getCurrentState() = StatePoko(
+        runCmd(BTCommands.GET_TEMP).toDouble(),
+        runCmd(BTCommands.GET_HUMIDITY).toInt(),
+        runCmd(BTCommands.GET_WATER_LEVEL).toInt(),
+        runCmd(BTCommands.GET_MOISTURE_LEVEL).toInt()
+    )
+
+    private fun getTargetState() = StatePoko(
+        runCmd(BTCommands.GET_TARGET_TEMP).toDouble(),
+        runCmd(BTCommands.GET_TARGET_HUMIDITY).toInt(),
+        runCmd(BTCommands.GET_TARGET_WATER_LVL).toInt(),
+        runCmd(BTCommands.GET_TARGET_MOISTURE_LEVEL).toInt()
+    )
+
+    private fun runCmd(btCommand: BTCommands, value: String? = null): String {
         Log.i("vm", "sending command $btCommand")
-        _socket!!.outputStream.write("C+${btCommand.ordinal}".toByteArray(Charsets.US_ASCII))
+        if (value == null) {
+            _socket!!.outputStream.write("C+${btCommand.ordinal}".toByteArray(Charsets.US_ASCII))
+        } else {
+            _socket!!.outputStream.write("C+${btCommand.ordinal}=$value".toByteArray(Charsets.US_ASCII))
+        }
         _socket!!.outputStream.flush()
         var response: String = "0"
         val buf = StringBuilder()
@@ -124,7 +147,7 @@ class MainViewModel : ViewModel() {
                 buf.append(_socket!!.inputStream.read().toChar())
             }
             if (buf.isNotEmpty()) {
-                Log.i("vm", "msg from socket: ${buf.toString()}")
+                Log.i("vm", "msg from socket: $buf")
                 response = buf.toString()
                 break
             }

@@ -14,6 +14,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
 import kotlinx.android.synthetic.main.activity_main.*
+import kotlinx.android.synthetic.main.activity_main.view.*
 import java.util.*
 import kotlin.math.min
 
@@ -27,6 +28,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         mainModel = ViewModelProvider(this).get(MainViewModel::class.java)
+        spinner
+        setupBindings()
         findDevices()
     }
 
@@ -57,7 +60,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
         this.bluetoothAdapter.startDiscovery()
-        setupBindings()
     }
 
     private fun setupBindings() {
@@ -87,6 +89,10 @@ class MainActivity : AppCompatActivity() {
                 this.isConnected.text = "disconnected"
                 this.isConnected.setTextColor(Color.RED)
             }
+        })
+        mainModel.targetState.observe(this, androidx.lifecycle.Observer {
+            this.targetTemp.text = "%d C".format(it.temp)
+            this.targetMoistureLevel.selectedItem
         })
     }
 
