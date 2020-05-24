@@ -4,7 +4,7 @@
 //#define DEBUG_S
 
 // uncomment line to enable op-functions log
-//#define DEBUG_O
+#define DEBUG_O
 
 #ifndef DEBUG
 #define DISABLE_LOGGING
@@ -115,6 +115,7 @@ void setup()
 
   pinMode(COOLER, OUTPUT);
   pinMode(HEATER, OUTPUT);
+  pinMode(PUMP, OUTPUT);
   target_state.moistureLevel = L_HIGH;
   target_state.temp = 40;
 }
@@ -125,7 +126,7 @@ void loop()
   updateWaterLvl(current_state.waterLevel);
   updateMoistureLvl(current_state.moistureLevel);
   operateTemp(current_state.temp, target_state.temp);
-  operateWaterPump(current_state.moistureLevel, target_state.moistureLevel);
+  operateWaterPump(current_state.moistureLevel, target_state.moistureLevel, PUMP);
   
   if (!bt_.available()) {
     #ifdef DEBUG
@@ -340,7 +341,7 @@ void operateWaterPump(const MoistureLevel &cur_lvl, const MoistureLevel &target_
     Log.notice("start pumping");
 #endif
     digitalWrite(pump_pin, HIGH);
-    delay(1000);
+  } else {
     digitalWrite(pump_pin, LOW);
   }
 }
