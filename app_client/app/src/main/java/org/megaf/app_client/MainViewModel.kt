@@ -10,9 +10,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.ticker
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import java.io.IOException
 import java.util.*
+import java.util.concurrent.locks.ReentrantLock
 
 internal enum class BTCommands {
     GET_TEMP,  //0
@@ -28,7 +28,8 @@ internal enum class BTCommands {
     SET_HUMIDITY,  //10
     SET_WATER_LEVEL,  //11
     SET_MOISTURE_LEVEL,  //12
-    SET_TEMP_THRESHOLD //13
+    SET_TEMP_THRESHOLD, //13
+    GET_SECONDS_SINCE_LAST_MOISTURE, //14
 }
 
 class MainViewModel : ViewModel() {
@@ -53,6 +54,8 @@ class MainViewModel : ViewModel() {
 
     private var _socket: BluetoothSocket? = null
 
+    private var _socket_talk_lock = ReentrantLock()
+
     var bt_device: BluetoothDevice?
         get() = _bt_device
         set(value) {
@@ -66,7 +69,8 @@ class MainViewModel : ViewModel() {
             periodicTask = viewModelScope.launch(Dispatchers.IO) {
                 for (unit in ticker(3000, 100)) {
                     Log.d("vm", "tick")
-                    runBlocking { getStats() }
+                    getStats()
+                    getTargetStats()
                 }
             }
             periodicTask!!.start()
@@ -76,32 +80,19 @@ class MainViewModel : ViewModel() {
         if (device.value == null || _socket != null && !reopen) {
             return
         }
-        viewModelScope.launch(Dispatchers.IO) {
-            _socket = _bt_device!!.createRfcommSocketToServiceRecord(uuid)
-            try {
-                _socket?.connect()
-            } catch (e: IOException) {
-                notice.postValue("failed to open socket")
-            }
-        }
+        _socket = _bt_device!!.createRfcommSocketToServiceRecord(uuid)
     }
 
     private fun getStats() {
         contentLoading.postValue(true)
         try {
-            runBlocking {
-                _open_socket()
-            }
-            if (_socket != null) {
-                val state = getCurrentState()
-                currentState.postValue(state)
-            }
+            val state = getCurrentState()
+            currentState.postValue(state)
         } catch (e: IOException) {
             notice.postValue("Failed to get current stats")
         } catch (e: NullPointerException) {
             notice.postValue("Socket unexpectedly closed")
         } finally {
-            _open_socket(true)
         }
         contentLoading.postValue(false)
     }
@@ -110,11 +101,13 @@ class MainViewModel : ViewModel() {
         contentLoading.postValue(true)
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                _open_socket()
-                targetState.postValue(getTargetState())
+                var state = getTargetState()
+                targetState.postValue(state)
             } catch (e: IOException) {
                 notice.postValue("Failed to get target stats")
-                _open_socket()
+            } catch (e: NullPointerException) {
+                notice.postValue("Socket unexpectedly closed")
+            } finally {
             }
         }
         contentLoading.postValue(false)
@@ -122,42 +115,54 @@ class MainViewModel : ViewModel() {
 
     private fun getCurrentState() = StatePoko(
         runCmd(BTCommands.GET_TEMP).toDouble(),
+        runCmd(BTCommands.GET_MOISTURE_LEVEL).toInt(),
         runCmd(BTCommands.GET_HUMIDITY).toInt(),
         runCmd(BTCommands.GET_WATER_LEVEL).toInt(),
-        runCmd(BTCommands.GET_MOISTURE_LEVEL).toInt()
+        runCmd(BTCommands.GET_SECONDS_SINCE_LAST_MOISTURE).toInt()
     )
 
     private fun getTargetState() = StatePoko(
         runCmd(BTCommands.GET_TARGET_TEMP).toDouble(),
-        runCmd(BTCommands.GET_TARGET_HUMIDITY).toInt(),
-        runCmd(BTCommands.GET_TARGET_WATER_LVL).toInt(),
         runCmd(BTCommands.GET_TARGET_MOISTURE_LEVEL).toInt()
     )
 
     private fun runCmd(btCommand: BTCommands, value: String? = null): String {
-        Log.i("vm", "sending command $btCommand")
-        if (value == null) {
-            _socket!!.outputStream.write("C+${btCommand.ordinal}".toByteArray(Charsets.US_ASCII))
-        } else {
-            _socket!!.outputStream.write("C+${btCommand.ordinal}=$value".toByteArray(Charsets.US_ASCII))
-        }
-        _socket!!.outputStream.flush()
-        var response: String = "0"
-        val buf = StringBuilder()
-        var attempt = 3
-        while (_socket!!.inputStream.available() > 0 || attempt-- > 0) {
-            Log.d("vm", "trying to read from socket")
-            Thread.sleep(500)
-            while (_socket!!.inputStream.available() > 0) {
-                buf.append(_socket!!.inputStream.read().toChar())
+        synchronized(this) {
+
+            _socket?.let {
+                if (!it.isConnected) {
+                    it.connect()
+                }
+            } ?: run {
+                _open_socket()
             }
-            if (buf.isNotEmpty()) {
-                Log.i("vm", "msg from socket: $buf")
-                response = buf.toString()
-                break
+            Log.i("vm", "sending command $btCommand")
+            if (value == null) {
+                _socket!!.outputStream.write("C+${btCommand.ordinal}".toByteArray(Charsets.US_ASCII))
+            } else {
+                _socket!!.outputStream.write("C+${btCommand.ordinal}=$value".toByteArray(Charsets.US_ASCII))
             }
+            _socket!!.outputStream.flush()
+            var response: String = "-1"
+            val buf = StringBuilder()
+            var attempt = 3
+            while (_socket!!.inputStream.available() > 0 || attempt-- > 0) {
+                Log.d("vm", "trying to read from socket")
+                Thread.sleep(300)
+                while (_socket!!.inputStream.available() > 0) {
+                    buf.append(_socket!!.inputStream.read().toChar())
+                }
+                if (buf.isNotEmpty()) {
+                    Log.i("vm", "msg from socket: $buf")
+                    response = buf.toString()
+                    break
+                }
+            }
+            if (response.toInt() == -1) {
+                throw IOException("failed to execute command");
+            }
+            return response
         }
-        return response
     }
 
     override fun onCleared() {

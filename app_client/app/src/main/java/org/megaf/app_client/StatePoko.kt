@@ -4,9 +4,10 @@ import kotlinx.serialization.Serializable
 
 class StatePoko(
     val temp: Double,
-    val humidity: Int,
-    val waterLevel: Int,
-    val moistureLevel: Int
+    val moistureLevel: Int,
+    val humidity: Int = 0,
+    val waterLevel: Int = 0,
+    val secondsSinceLastMoisture: Int = 0
 )
 
 

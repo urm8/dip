@@ -4,7 +4,7 @@
 //#define DEBUG_S
 
 // uncomment line to enable op-functions log
-#define DEBUG_O
+//#define DEBUG_O
 
 #ifndef DEBUG
 #define DISABLE_LOGGING
@@ -14,11 +14,12 @@
 #include <Time.h>
 #include <SimpleDHT.h>
 #include <ArduinoLog.h>
+#include <EEPROM.h>
 
-#define JSON_CAPACITY 512
 #define BAUDR 250000
-#define BT_BAUDR 57600
-#define BT_TIMEOUT 1000
+//#define BT_BAUDR 57600
+#define BT_BAUDR 115200
+#define BT_TIMEOUT 150
 
 enum MoistureLevel {
   L_LOW,
@@ -46,7 +47,9 @@ struct State {
   byte waterLevel {};
   MoistureLevel moistureLevel {};
   byte tempTreshold {};
+  unsigned long secondsSinceLastMoisture {};
 };
+
 
 void serialEvent_(String &cmd, SoftwareSerial &serial);
 void handleJson(const String& cmd);
@@ -58,13 +61,13 @@ const static byte BT_TX = 6;
  void runAtCmd(SoftwareSerial &serial, const String &cmd, bool expectOk = true, const char *term = "\n\r") {
       serial.print(cmd.c_str());
       serial.print(term);
-      delay(1000);
+      delay(250);
       String response = serial.readString();
       Log.notice("hc 06 responds: %s", response.c_str());
 }
 
 static const int DHT_PIN { 8 };
-static const byte COOLER { 10};
+static const byte COOLER { 3 };
 static const byte HEATER { 11 };
 static const byte PUMP { 12 };
 
@@ -78,7 +81,11 @@ static int WATER_LVL_SENSOR_H = 480; // mm;
 
 static State current_state {};// (26, 80, 0, 0);
 static State target_state {};//(28, 0, 0, 1);
+const int target_state_addr = 0;
 
+using time_t = unsigned long;
+static time_t epoch {millis()};
+static time_t one_day = 86400000;
 
 using BT = SoftwareSerial;
 
@@ -118,6 +125,14 @@ void setup()
   pinMode(PUMP, OUTPUT);
   target_state.moistureLevel = L_HIGH;
   target_state.temp = 40;
+
+  
+  EEPROM.get(target_state_addr, target_state);
+  if (!(target_state.temp > 0 && target_state.temp < 40 && target_state.moistureLevel >= L_LOW && target_state.moistureLevel < L_MAX)) {
+    target_state.temp = 21;
+    target_state.moistureLevel = L_MEDIUM;
+  }
+  Log.notice("target: %d C, moisture: %s", target_state.temp, MoistureLevelToString(target_state.moistureLevel).c_str());
 }
 
 void loop()
@@ -142,6 +157,10 @@ void loop()
     bt_.readString()
   };
 
+  if (millis() % (1000 * 60 * 10) == 0)
+  {
+     EEPROM.put(target_state_addr, target_state);
+  }
 
   serialEvent_(cmd, bt_);
 }
@@ -154,6 +173,7 @@ enum BTCommands {
   GET_WATER_LEVEL, // 2
   GET_MOISTURE_LEVEL, // 3
   GET_TEMP_THRESHOLD, // 4
+  
 
   GET_TARGET_TEMP, //5 
   GET_TARGET_HUMIDITY, //6
@@ -165,6 +185,8 @@ enum BTCommands {
   SET_WATER_LEVEL, //11
   SET_MOISTURE_LEVEL, //12
   SET_TEMP_THRESHOLD, //13
+  
+  GET_SECONDS_SINCE_LAST_MOISTURE, //14
 };
 
 void serialEvent_(String &cmd, SoftwareSerial &serial) {
@@ -218,22 +240,29 @@ void serialEvent_(String &cmd, SoftwareSerial &serial) {
         serial.print(target_state.moistureLevel);
         break;
       case SET_TEMP:
-        target_state.temp = min(cmd_val.toInt(), 255);
+        target_state.temp = min(max(cmd_val.toInt(), 0), 255);
         break;
       case SET_HUMIDITY:
-        target_state.humidity = min(cmd_val.toInt(), 255);
+        target_state.humidity = min(max(cmd_val.toInt(), 0), 255);
         break;
       case SET_MOISTURE_LEVEL:
-        target_state.moistureLevel = cmd_val.toInt();
+        target_state.moistureLevel = max(min(cmd_val.toInt(), L_MAX), 0);
         break;
       case SET_TEMP_THRESHOLD:
         current_state.tempTreshold = cmd_val.toInt();
         break;
+      case GET_SECONDS_SINCE_LAST_MOISTURE:
+        serial.print((millis() % one_day - current_state.secondsSinceLastMoisture ) / 1000);
+        break;
       default:
         Log.error("bad command %d", int_cmd);
+        serial.print(-1);
       #ifdef DEBUG
       #undef serial
       #endif
+    };
+    if (int_cmd >= SET_TEMP && int_cmd <= SET_TEMP_THRESHOLD) {
+        EEPROM.put(target_state_addr, target_state);
     }
   } else {
     Log.error("unknown command");
@@ -311,37 +340,39 @@ void operateTemp(byte current_temp, byte target_temp, byte cooler_pin, byte heat
     analogWrite(heater_pin, 0);
     return;
   }
-  byte diff { abs(current_temp - target_temp) };
-  byte target_pin {};
-  byte disable_pin {};
-  if (current_temp < target_temp) {
-    target_pin = heater_pin;
-    disable_pin = cooler_pin;
-#ifdef DEBUG_O
-    Log.notice("turning heater on");
-#endif
-  } else {
-    target_pin = cooler_pin;
-    disable_pin = heater_pin;
-#ifdef DEBUG_O
-    Log.notice("turning cooler on");
-#endif
-  }
+  
+  byte target_pin { current_temp < target_temp ? heater_pin: cooler_pin};
+  byte disable_pin { current_temp < target_temp ? cooler_pin: heater_pin};
+  //  byte diff { abs(current_temp - target_temp) };
   // max prevents overflow
-  analogWrite(target_pin, map(diff, 1, max(10, diff), 0, 255));
-  analogWrite(disable_pin, LOW);
+  //  const int targetPwmVal {map(diff, 1, max(4, diff), 0, 255)};
+  digitalWrite(target_pin, HIGH);
+  digitalWrite(disable_pin, LOW);
 }
 
 void operateWaterPump(const MoistureLevel &cur_lvl, const MoistureLevel &target_lvl, byte pump_pin) {
-#ifdef DEBUG_O
-  Log.notice("current moisture: %s, target_moisture: %s", MoistureLevelToString(cur_lvl).c_str(), MoistureLevelToString(target_lvl).c_str());
-#endif
-  if (cur_lvl < target_lvl) {
+
+  if (!current_state.secondsSinceLastMoisture) {
+    current_state.secondsSinceLastMoisture = epoch;
+  }
+  time_t cur_millis = millis();
+  time_t delta {(cur_millis % one_day - current_state.secondsSinceLastMoisture ) / 1000 };
+  #ifdef DEBUG_O
+  Log.notice("current moisture: %s, target_moisture: %s, seconds since last moisture: %ul", MoistureLevelToString(cur_lvl).c_str(), MoistureLevelToString(target_lvl).c_str(), current_state.secondsSinceLastMoisture);
+  Log.notice("time since last moisture %l", delta);
+#endif 
+  if (cur_lvl < target_lvl && delta > 60 * 60 * 2) {
 #ifdef DEBUG_O
     Log.notice("start pumping");
+    Log.notice("resetting time since last moisture to %l", current_state.secondsSinceLastMoisture / 1000);
 #endif
     digitalWrite(pump_pin, HIGH);
-  } else {
+    current_state.secondsSinceLastMoisture = cur_millis % one_day;
+    
+  } else if (delta > 5) {
+#ifdef DEBUG_O
+    Log.notice("stop pumping, 5s elapsed");
+#endif
     digitalWrite(pump_pin, LOW);
   }
 }

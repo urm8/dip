@@ -14,7 +14,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
 import kotlinx.android.synthetic.main.activity_main.*
 import java.util.*
+import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
     val validNames = setOf("farm", "hc-06")
@@ -87,6 +89,7 @@ class MainActivity : AppCompatActivity() {
             this.moisture.text =
                 "${MoistureLevel.values()[min(it.moistureLevel, MoistureLevel.values().size - 1)]}"
             this.tankLevel.text = "${it.waterLevel}%"
+            secondsSinceLastMoisture.text = "${it.secondsSinceLastMoisture} s"
         })
         mainModel.device.observe(this, androidx.lifecycle.Observer {
             if (it != null) {
@@ -106,8 +109,9 @@ class MainActivity : AppCompatActivity() {
             }
         })
         mainModel.targetState.observe(this, androidx.lifecycle.Observer {
-            this.targetTemp.text = "%d C".format(it.temp)
-            this.targetMoistureLevel.selectedItem
+            targetTemp.text = "${it.temp} C"
+            targetTempSeekBar.progress = min(it.temp.roundToInt(), targetTempSeekBar.max)
+            targetMoistureLevel.setSelection(min(1, max(it.moistureLevel + 1, targetMoistureLevel.count)), true)
         })
     }
 
@@ -126,6 +130,7 @@ class MainActivity : AppCompatActivity() {
                     if (device.name in validNames) {
                         mainModel.bt_device = device
                     }
+                    unregisterReceiver(this)
                 }
             }
         }

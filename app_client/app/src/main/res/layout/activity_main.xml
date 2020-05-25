@@ -4,8 +4,8 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:layout_marginLeft="11dp"
-    android:layout_marginRight="11dp"
+    android:layout_marginLeft="8dp"
+    android:layout_marginRight="8dp"
     tools:context=".MainActivity">
 
 
@@ -83,7 +83,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:gravity="center"
+                    android:gravity="left"
                     android:labelFor="@id/temp"
                     android:text="@string/temperature" />
 
@@ -92,7 +92,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:autofillHints=""
-                    android:gravity="center" />
+                    android:gravity="left" />
             </LinearLayout>
 
             <LinearLayout
@@ -104,7 +104,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:gravity="center"
+                    android:gravity="left"
                     android:labelFor="@id/moisture"
                     android:text="@string/moisture" />
 
@@ -112,7 +112,7 @@
                     android:id="@+id/moisture"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:gravity="center"
+                    android:gravity="left"
                     tools:text="wet" />
             </LinearLayout>
 
@@ -125,7 +125,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:gravity="center"
+                    android:gravity="left"
                     android:labelFor="@+id/tankLevel"
                     android:text="@string/water_amount" />
 
@@ -133,8 +133,26 @@
                     android:id="@+id/tankLevel"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:gravity="center"
+                    android:gravity="left"
                     tools:text="100%" />
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="left"
+                    android:labelFor="@+id/secondsSinceLastMoisture"
+                    android:text="last moisture:"/>
+
+                <TextView
+                    android:id="@+id/secondsSinceLastMoisture"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="left"/>
             </LinearLayout>
 
         </LinearLayout>

@@ -2,7 +2,7 @@
     <string name="app_name">app_client</string>
     <string name="sync">sync</string>
     <string name="current_state">Current state</string>
-    <string name="temperature">temperature:</string>
+    <string name="temperature">temp:</string>
     <string name="moisture">moisture level:</string>
     <string name="water_amount">water amount:</string>
     <string name="target_temp">target Temp</string>
