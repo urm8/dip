@@ -8,15 +8,14 @@ import android.graphics.Color
 import android.os.Bundle
 import android.view.View.INVISIBLE
 import android.view.View.VISIBLE
-import android.widget.SeekBar
-import android.widget.Toast
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
 import kotlinx.android.synthetic.main.activity_main.*
 import java.util.*
+import java.util.concurrent.TimeUnit
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
     val validNames = setOf("farm", "hc-06")
@@ -24,6 +23,7 @@ class MainActivity : AppCompatActivity() {
     lateinit var mainModel: MainViewModel
 
     lateinit var bluetoothAdapter: BluetoothAdapter
+    lateinit var moistureLvls: Array<String>
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -36,12 +36,7 @@ class MainActivity : AppCompatActivity() {
         val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
         if (bluetoothAdapter == null) {
             AlertDialog.Builder(this).setMessage("devices without bluetooth module not available")
-                .setOnDismissListener(object : DialogInterface.OnDismissListener {
-                    override fun onDismiss(dialog: DialogInterface?) {
-                        finish()
-                    }
-
-                })
+                .setOnDismissListener { finish() }
                 .create().show()
             return
         }
@@ -59,22 +54,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
         this.bluetoothAdapter.startDiscovery()
+        this.moistureLvls = resources.getStringArray(R.array.moisture_levels)
     }
 
     private fun setupBindings() {
-        targetTempSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                targetTemp.text = "$progress C"
-            }
-
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {
-
-            }
-
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {
-            }
-        })
-
         mainModel.notice.observe(this, androidx.lifecycle.Observer {
             Toast.makeText(this, it, Toast.LENGTH_LONG).show()
         })
@@ -85,11 +68,11 @@ class MainActivity : AppCompatActivity() {
             }
         })
         mainModel.currentState.observe(this, androidx.lifecycle.Observer {
-            this.temp.text = "${it.temp} C"
-            this.moisture.text =
+            temp.text = "${it.temp} C"
+            moisture.text =
                 "${MoistureLevel.values()[min(it.moistureLevel, MoistureLevel.values().size - 1)]}"
-            this.tankLevel.text = "${it.waterLevel}%"
-            secondsSinceLastMoisture.text = "${it.secondsSinceLastMoisture} s"
+            tankLevel.text = "${it.waterLevel}"
+            secondsSinceLastMoisture.text = fmtSeconds(it.secondsSinceLastMoisture)
         })
         mainModel.device.observe(this, androidx.lifecycle.Observer {
             if (it != null) {
@@ -109,10 +92,60 @@ class MainActivity : AppCompatActivity() {
             }
         })
         mainModel.targetState.observe(this, androidx.lifecycle.Observer {
-            targetTemp.text = "${it.temp} C"
-            targetTempSeekBar.progress = min(it.temp.roundToInt(), targetTempSeekBar.max)
-            targetMoistureLevel.setSelection(min(1, max(it.moistureLevel + 1, targetMoistureLevel.count)), true)
+            targetTemp.text = "${it.temp}"
+            targetMoistureLevel.text = moistureLvls[min(max(it.moistureLevel, 0), moistureLvls.size - 1)]
         })
+        editTarget.setOnClickListener {
+            val layout = LinearLayout(this)
+            layout.orientation = LinearLayout.VERTICAL
+            val seekBar = SeekBar(this)
+            seekBar.min = 14
+            seekBar.max = 45
+            layout.addView(seekBar)
+            val tempText = TextView(this)
+            seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(
+                    seekBar: SeekBar?,
+                    progress: Int,
+                    fromUser: Boolean
+                ) {
+                    tempText.text = "Target temp: $progress "
+                }
+
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                }
+
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                }
+            })
+            try {
+                seekBar.progress = mainModel.targetState.value!!.temp.toInt()
+            } catch (e: Exception) {
+                seekBar.progress = seekBar.min
+            }
+            layout.addView(tempText)
+            val targetMoisture = TextView(this)
+            targetMoisture.text = "Target moisture:"
+            val spinner = Spinner(this)
+            spinner.adapter = ArrayAdapter<String>(
+                this,
+                android.R.layout.simple_spinner_item,
+                resources.getStringArray(R.array.moisture_levels)
+            )
+            layout.addView(spinner)
+            AlertDialog.Builder(this)
+                .setTitle(R.string.edit_dialog_title)
+                .setView(layout)
+                .setPositiveButton(
+                    "Save",
+                    { dial: DialogInterface, which: Int ->
+                        mainModel.setTargetState(
+                            seekBar.progress,
+                            spinner.selectedItemPosition - 1
+                        )
+                    })
+                .show()
+        }
     }
 
     // Create a BroadcastReceiver for ACTION_FOUND.
@@ -139,6 +172,21 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         unregisterReceiver(receiver)
+    }
+
+    private fun fmtSeconds(uptime: Long): String {
+        val days = TimeUnit.SECONDS.toDays(uptime)
+        val hours: Long = TimeUnit.SECONDS.toHours(uptime) - TimeUnit.DAYS.toHours(days)
+        val minutes: Long = TimeUnit.SECONDS.toMinutes(uptime) - TimeUnit.HOURS.toMinutes(hours)
+        val seconds: Long = uptime % 60
+        val out = StringBuilder()
+        if (days > 0) {
+            out.append("$days h")
+        }
+        out.append(" $hours h")
+        out.append(" $minutes m")
+        out.append(" $seconds s")
+        return out.toString()
     }
 
 }

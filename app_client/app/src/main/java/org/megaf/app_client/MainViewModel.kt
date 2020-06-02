@@ -116,9 +116,8 @@ class MainViewModel : ViewModel() {
     private fun getCurrentState() = StatePoko(
         runCmd(BTCommands.GET_TEMP).toDouble(),
         runCmd(BTCommands.GET_MOISTURE_LEVEL).toInt(),
-        runCmd(BTCommands.GET_HUMIDITY).toInt(),
         runCmd(BTCommands.GET_WATER_LEVEL).toInt(),
-        runCmd(BTCommands.GET_SECONDS_SINCE_LAST_MOISTURE).toInt()
+        runCmd(BTCommands.GET_SECONDS_SINCE_LAST_MOISTURE).toLong()
     )
 
     private fun getTargetState() = StatePoko(
@@ -143,6 +142,10 @@ class MainViewModel : ViewModel() {
                 _socket!!.outputStream.write("C+${btCommand.ordinal}=$value".toByteArray(Charsets.US_ASCII))
             }
             _socket!!.outputStream.flush()
+            if (value != null) {
+                Thread.sleep(300)
+                return ""
+            }
             var response: String = "-1"
             val buf = StringBuilder()
             var attempt = 3
@@ -168,5 +171,30 @@ class MainViewModel : ViewModel() {
     override fun onCleared() {
         super.onCleared()
         this._socket?.close()
+    }
+
+    fun setTargetState(temp: Int, moistureLevel: Int) {
+        contentLoading.postValue(true)
+        viewModelScope.launch(Dispatchers.IO) {
+            var setTemp = false;
+            var setMoisture = false;
+            while (!setTemp || !setMoisture) {
+                try {
+                    if (!setTemp) {
+                        runCmd(BTCommands.SET_TEMP, temp.toString())
+                        setTemp = true;
+                    }
+                    if (!setMoisture) {
+                        runCmd(BTCommands.SET_MOISTURE_LEVEL, moistureLevel.toString())
+                        setMoisture = true;
+                    }
+                } catch (e: IOException) {
+                    notice.postValue("Failed to set target stats")
+                } catch (e: NullPointerException) {
+                    notice.postValue("Socket unexpectedly closed")
+                }
+            }
+        }
+        contentLoading.postValue(false)
     }
 }
