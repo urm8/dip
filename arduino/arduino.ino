@@ -6,6 +6,7 @@
 // uncomment line to enable op-functions log
 //#define DEBUG_O
 
+//#define DEBUG_C
 #ifndef DEBUG
 #define DISABLE_LOGGING
 #endif
@@ -16,8 +17,7 @@
 #include <ArduinoLog.h>
 #include <EEPROM.h>
 
-#define BAUDR 250000
-//#define BT_BAUDR 57600
+#define BAUDR 2000000
 #define BT_BAUDR 115200
 #define BT_TIMEOUT 150
 
@@ -67,11 +67,10 @@ const static byte BT_TX = 6;
 }
 
 static const int DHT_PIN { 8 };
-static const byte COOLER { 3 };
+static const byte COOLER { 2 };
 static const byte HEATER { 11 };
 static const byte PUMP { 12 };
-
-
+static const byte MOISTURE_SENSOR_PWR { 7 };
 static const int WATER_SENSOR {A0};
 static const int MOISTURE_SENSOR {A1};
 
@@ -121,8 +120,10 @@ void setup()
 #endif
 
   pinMode(COOLER, OUTPUT);
+  pinMode(3, OUTPUT);
   pinMode(HEATER, OUTPUT);
   pinMode(PUMP, OUTPUT);
+  pinMode(MOISTURE_SENSOR_PWR, OUTPUT);
   target_state.moistureLevel = L_HIGH;
   target_state.temp = 40;
 
@@ -140,7 +141,7 @@ void loop()
   updateTemp(current_state.temp, current_state.humidity);
   updateWaterLvl(current_state.waterLevel);
   updateMoistureLvl(current_state.moistureLevel);
-  operateTemp(current_state.temp, target_state.temp);
+//  operateTemp(current_state.temp, target_state.temp);
   operateWaterPump(current_state.moistureLevel, target_state.moistureLevel, PUMP);
   
   if (!bt_.available()) {
@@ -211,8 +212,8 @@ void serialEvent_(String &cmd, SoftwareSerial &serial) {
     } else {
       int_cmd = cmd.toInt();
     }
-    #ifdef DEBUG
-//    #define serial Serial
+    #ifdef DEBUG_C
+    #define serial Serial
     #endif
     switch (int_cmd) {
       case GET_TEMP:
@@ -257,7 +258,7 @@ void serialEvent_(String &cmd, SoftwareSerial &serial) {
       default:
         Log.error("bad command %d", int_cmd);
         serial.print(-1);
-      #ifdef DEBUG
+      #ifdef DEBUG_C
       #undef serial
       #endif
     };
@@ -315,17 +316,34 @@ void updateWaterLvl(byte &water_lvl) {
 #endif
 }
 
+static time_t last_time_moisture_checked {};
+static time_t heating_start {};
+
 void updateMoistureLvl(MoistureLevel &lvl) {
   int v {analogRead(MOISTURE_SENSOR)};
   /* doc http://wiki.amperka.ru/products:sensor-soil-moisture-resistive
      logic here is that, op voltage is 5v and resolution is 1024
      the out value of moisture sensor is within range 0-3.5V, so this should equal to {3.5 * 1024 / 5}
   */
-  static const int sensMax { 1024 * 3 / 5 };
+  
+  if (last_time_moisture_checked && millis() - last_time_moisture_checked <= 1000 * 60 * 45) {
+    return;
+  }
+  if (!heating_start) {
+    heating_start = millis();
+    digitalWrite(MOISTURE_SENSOR_PWR, HIGH);
+  }
+  
+  if (millis() - heating_start < 1000 * 10) 
+    return;
+  heating_start = 0;
+  static const int sensMax { 1024 * 3.5 / 5 };
   lvl = MoistureLevel(map(v, 0, sensMax, L_LOW, L_HIGH));
-#ifdef DEBUG_S
-  Log.notice("moisture sensor value: %d, map it to %d", v, lvl);
-#endif
+//#ifdef DEBUG_S
+  Log.notice("moisture sensor value: %d, map it to %d, %d", v, lvl, HIGH);
+//#endif
+  last_time_moisture_checked = millis();
+  digitalWrite(MOISTURE_SENSOR_PWR, LOW);
 }
 
 void operateTemp(byte current_temp, byte target_temp, byte cooler_pin, byte heater_pin) {
@@ -338,16 +356,15 @@ void operateTemp(byte current_temp, byte target_temp, byte cooler_pin, byte heat
 #endif
     analogWrite(cooler_pin, 0);
     analogWrite(heater_pin, 0);
+    digitalWrite(3, 0);
     return;
   }
   
   byte target_pin { current_temp < target_temp ? heater_pin: cooler_pin};
   byte disable_pin { current_temp < target_temp ? cooler_pin: heater_pin};
-  //  byte diff { abs(current_temp - target_temp) };
-  // max prevents overflow
-  //  const int targetPwmVal {map(diff, 1, max(4, diff), 0, 255)};
   digitalWrite(target_pin, HIGH);
   digitalWrite(disable_pin, LOW);
+  digitalWrite(3, target_pin == COOLER ? HIGH: LOW);
 }
 
 void operateWaterPump(const MoistureLevel &cur_lvl, const MoistureLevel &target_lvl, byte pump_pin) {
@@ -357,10 +374,6 @@ void operateWaterPump(const MoistureLevel &cur_lvl, const MoistureLevel &target_
   }
   time_t cur_millis = millis();
   time_t delta {(cur_millis % one_day - current_state.secondsSinceLastMoisture ) / 1000 };
-  #ifdef DEBUG_O
-  Log.notice("current moisture: %s, target_moisture: %s, seconds since last moisture: %ul", MoistureLevelToString(cur_lvl).c_str(), MoistureLevelToString(target_lvl).c_str(), current_state.secondsSinceLastMoisture);
-  Log.notice("time since last moisture %l", delta);
-#endif 
   if (cur_lvl < target_lvl && delta > 60 * 60 * 2) {
 #ifdef DEBUG_O
     Log.notice("start pumping");
