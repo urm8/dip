@@ -24,6 +24,7 @@
 enum MoistureLevel {
   L_LOW,
   L_MEDIUM,
+  L_MEDIUM_P,
   L_HIGH,
   L_MAX,
 };
@@ -34,6 +35,8 @@ const String MoistureLevelToString(const MoistureLevel &lvl) {
       return "low";
     case L_MEDIUM:
       return "med";
+    case L_MEDIUM_P:
+      return "med+";
     case L_HIGH:
       return "hi";
     default:
@@ -48,6 +51,7 @@ struct State {
   MoistureLevel moistureLevel {};
   byte tempTreshold {};
   unsigned long secondsSinceLastMoisture {};
+  int daysSinceLastMoisture { 0 };
 };
 
 
@@ -158,7 +162,7 @@ void loop()
     bt_.readString()
   };
 
-  if (millis() % (1000 * 60 * 10) == 0)
+  if (millis() % (1000 * 60 * 10) == 0 && millis())
   {
      EEPROM.put(target_state_addr, target_state);
   }
@@ -188,6 +192,7 @@ enum BTCommands {
   SET_TEMP_THRESHOLD, //13
   
   GET_SECONDS_SINCE_LAST_MOISTURE, //14
+  GET_DAYS_SINCE_LAST_MOISTURE, //15
 };
 
 void serialEvent_(String &cmd, SoftwareSerial &serial) {
@@ -254,6 +259,9 @@ void serialEvent_(String &cmd, SoftwareSerial &serial) {
         break;
       case GET_SECONDS_SINCE_LAST_MOISTURE:
         serial.print((millis() % one_day - current_state.secondsSinceLastMoisture ) / 1000);
+        break;
+      case GET_DAYS_SINCE_LAST_MOISTURE:
+        serial.print(current_state.daysSinceLastMoisture);
         break;
       default:
         Log.error("bad command %d", int_cmd);
@@ -381,7 +389,6 @@ void operateWaterPump(const MoistureLevel &cur_lvl, const MoistureLevel &target_
 #endif
     digitalWrite(pump_pin, HIGH);
     current_state.secondsSinceLastMoisture = cur_millis % one_day;
-    
   } else if (delta > 5) {
 #ifdef DEBUG_O
     Log.notice("stop pumping, 5s elapsed");
